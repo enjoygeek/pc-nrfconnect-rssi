@@ -34,23 +34,63 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { logger } from 'nrfconnect/core';
-import programming from 'nrfconnect/programming';
+import { logger, getAppDir } from 'nrfconnect/core';
+import nrfjprog from 'pc-nrfjprog-js';
 
-const firmware = {
-    address: 0x2000,
-    id: 'rssi-fw-1.0.0',
-    files: {
-        nrf52: './firmware/_build/nrf52832_xxaa.hex',
-    },
-};
+const nRFjprog = new nrfjprog.nRFjprog(); // eslint-disable-line
+
+const DEVICE_FAMILY_NRF52 = 1;
+
+const FIRMWARE_ID_ADDRESS = 0x2000;
+const FIRMWARE_ID = 'rssi-fw-1.0.0';
+const FIRMWARE_PATH = `${getAppDir()}/firmware/_build/nrf52832_xxaa.hex`;
+
+function read(serialNumber, address, length) {
+    return new Promise((resolve, reject) => {
+        nRFjprog.read(parseInt(serialNumber, 10), address, length, (err, contents) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(contents);
+            }
+        });
+    });
+}
+
+function getDeviceInfo(serialNumber) {
+    return new Promise((resolve, reject) => {
+        nRFjprog.getDeviceInfo(parseInt(serialNumber, 10), (err, deviceInfo) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(deviceInfo);
+            }
+        });
+    });
+}
+
+function program(serialNumber, path) {
+    return new Promise((resolve, reject) => {
+        nRFjprog.program(parseInt(serialNumber, 10), path, {}, err => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
 
 export function validateFirmware(serialNumber, { onValid, onInvalid }) {
     return () => {
-        programming.readAddress(serialNumber, firmware.address, firmware.id.length)
-            .then(res => {
-                const data = new Buffer(res).toString();
-                return data === firmware.id ? onValid() : onInvalid();
+        read(parseInt(serialNumber, 10), FIRMWARE_ID_ADDRESS, FIRMWARE_ID.length)
+            .then(contents => {
+                const data = new Buffer(contents).toString();
+                if (data === FIRMWARE_ID) {
+                    onValid();
+                } else {
+                    onInvalid();
+                }
             })
             .catch(err => logger.error(`Error when validating firmware: ${err.message}`));
     };
@@ -58,7 +98,13 @@ export function validateFirmware(serialNumber, { onValid, onInvalid }) {
 
 export function programFirmware(serialNumber, { onSuccess }) {
     return () => {
-        programming.programWithHexFile(serialNumber, firmware.files)
+        getDeviceInfo(serialNumber)
+            .then(deviceInfo => {
+                if (deviceInfo.family !== DEVICE_FAMILY_NRF52) {
+                    throw new Error(`${serialNumber} is not a nRF52 devkit`);
+                }
+                return program(serialNumber, FIRMWARE_PATH);
+            })
             .then(onSuccess)
             .catch(err => logger.error(`Error when programming: ${err.message}`));
     };
