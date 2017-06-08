@@ -34,7 +34,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import { logger, getAppDir } from 'nrfconnect/core';
+import { getAppDir } from 'nrfconnect/core';
 import nrfjprog from 'pc-nrfjprog-js';
 
 const nRFjprog = new nrfjprog.nRFjprog(); // eslint-disable-line
@@ -82,7 +82,7 @@ function program(serialNumber, path) {
 }
 
 export function validateFirmware(serialNumber, { onValid, onInvalid }) {
-    return () => {
+    return dispatch => {
         read(parseInt(serialNumber, 10), FIRMWARE_ID_ADDRESS, FIRMWARE_ID.length)
             .then(contents => {
                 const data = new Buffer(contents).toString();
@@ -92,12 +92,18 @@ export function validateFirmware(serialNumber, { onValid, onInvalid }) {
                     onInvalid();
                 }
             })
-            .catch(err => logger.error(`Error when validating firmware: ${err.message}`));
+            .catch(err => {
+                dispatch({ type: 'FIRMWARE_DIALOG_HIDE' });
+                dispatch({
+                    type: 'ERROR_DIALOG_SHOW',
+                    message: `Error when validating firmware: ${err.message}`,
+                });
+            });
     };
 }
 
 export function programFirmware(serialNumber, { onSuccess }) {
-    return () => {
+    return dispatch => {
         getDeviceInfo(serialNumber)
             .then(deviceInfo => {
                 if (deviceInfo.family !== DEVICE_FAMILY_NRF52) {
@@ -106,6 +112,12 @@ export function programFirmware(serialNumber, { onSuccess }) {
                 return program(serialNumber, FIRMWARE_PATH);
             })
             .then(onSuccess)
-            .catch(err => logger.error(`Error when programming: ${err.message}`));
+            .catch(err => {
+                dispatch({ type: 'FIRMWARE_DIALOG_HIDE' });
+                dispatch({
+                    type: 'ERROR_DIALOG_SHOW',
+                    message: `Error when programming: ${err.message}`,
+                });
+            });
     };
 }
